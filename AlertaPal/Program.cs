@@ -1,18 +1,15 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using Newtonsoft.Json.Linq;
 using System.Diagnostics;
-using System.IO;
-using System.Linq;
 using System.Net;
-using Newtonsoft.Json.Linq;
 
 class Program
 {
+
     static string baseDir;
 
     static void Main()
     {
-        inicio:
+    inicio:
         baseDir = AppDomain.CurrentDomain.BaseDirectory;
         string logsDir = Path.Combine(baseDir, "logs");
         string playersCsvFile = Path.Combine(baseDir, "players_data.csv");
@@ -40,7 +37,13 @@ class Program
             Console.WriteLine("Requisição a API concluída com sucesso.");
         }
 
-        ProcessJsonAndUpdateCsv(playersCsvFile, responseFile);
+        if (ProcessJsonAndUpdateCsv(playersCsvFile, responseFile) == false)
+        {
+            Thread.Sleep(10000);
+            Console.WriteLine("Payer sem ID");
+            goto inicio;
+        }
+
 
         string directoryPath = Path.Combine(baseDir, "nome");
         CheckCoordinatesInTextFiles(playersCsvFile, directoryPath, tolerancia);
@@ -91,7 +94,7 @@ class Program
         }
     }
 
-    static void ProcessJsonAndUpdateCsv(string playersCsvFile, string responseFile)
+    public static bool ProcessJsonAndUpdateCsv(string playersCsvFile, string responseFile)
     {
         List<Player> existingPlayers = ReadPlayersFromCsv(playersCsvFile);
         List<Player> newPlayers = ParsePlayersFromJson(responseFile);
@@ -99,11 +102,20 @@ class Program
         List<Player> playersEntered = new List<Player>();
         List<Player> playersExited = new List<Player>();
 
+
+
         foreach (var newPlayer in newPlayers)
         {
+            if (newPlayer.PlayerId == "None")
+            {
+                Console.WriteLine("Acconut sem ID");
+                return false;
+            }
+
             if (!existingPlayers.Any(p => p.AccountName == newPlayer.AccountName))
             {
                 playersEntered.Add(newPlayer);
+
             }
         }
 
@@ -114,6 +126,8 @@ class Program
                 playersExited.Add(existingPlayer);
             }
         }
+
+
 
         UpdateCsvWithPlayers(playersCsvFile, newPlayers);
 
@@ -130,6 +144,7 @@ class Program
             Console.WriteLine($"{player.Name}");
             SendDiscordNotification($"{player.Name} Saiu do servidor", "16411130");
         }
+        return true;
     }
 
     static List<Player> ReadPlayersFromCsv(string filePath)
@@ -168,6 +183,7 @@ class Program
             {
                 Name = (string)player["name"],
                 AccountName = (string)player["accountName"],
+                PlayerId = (string)player["playerId"],
                 LocationX = (int)Math.Floor((double)player["location_x"]),
                 LocationY = (int)Math.Floor((double)player["location_y"])
             });
@@ -266,7 +282,8 @@ class Program
             Console.WriteLine($"Erro ao enviar notificação para WhatsApp: {ex.Message}");
         }
     }
-    static void SendDiscordNotification(string message,string discordColor)
+
+    static void SendDiscordNotification(string message, string discordColor)
     {
         try
         {
@@ -275,7 +292,8 @@ class Program
 
             ProcessStartInfo startInfo = new ProcessStartInfo
             {
-                FileName = "curl.exe",
+                FileName = "curl", //Linux
+                //FileName = "curl.exe", //para windows
                 Arguments = $"--location \"{webhookUrl}\" --header \"Content-Type: application/json\" --data \"{jsonBody}\"",
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
@@ -303,14 +321,13 @@ class Program
             Console.WriteLine($"Erro ao enviar notificação para o Discord: {ex.Message}");
         }
     }
-
-
 }
 
 class Player
 {
     public string Name { get; set; }
     public string AccountName { get; set; }
+    public string PlayerId { get; set; }
     public int LocationX { get; set; }
     public int LocationY { get; set; }
 }
