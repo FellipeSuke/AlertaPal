@@ -1,56 +1,172 @@
 ﻿using Newtonsoft.Json.Linq;
 using System.Diagnostics;
 using System.Net;
+using System.Net.Http;
+using System.Text;
+using System.Threading.Tasks;
 
 class Program
 {
-
     static string baseDir;
+    static string apiUrl;
+    static string authUsername;
+    static string authPassword;
+    static string whatsappApiUrl;
+    static string whatsappApiKey;
+    static string ChatIdContact;
+    static string discordWebhookUrl;
+    static int toleranciaProxima;
+    static string toleranciaProximaStr;
+    static int toleranciaPerigo;
+    static string toleranciaPerigoStr;
 
-    static void Main()
+
+
+    static async Task Main()
     {
-    inicio:
-        baseDir = AppDomain.CurrentDomain.BaseDirectory;
-        string logsDir = Path.Combine(baseDir, "logs");
-        string playersCsvFile = Path.Combine(baseDir, "players_data.csv");
-        string responseFile = Path.Combine(baseDir, "response.json");
+        InitializeDirectoriesAndFiles();
+        InitializeEnvironmentVariables();
 
-        int tolerancia = 7000;
-        Console.WriteLine($"################### {DateTime.Now} ###################");
-        Console.WriteLine($"Tolerância definida em {tolerancia}");
-
-        CleanTempFiles();
-
-        string apiUrl = "http://192.168.100.73:8212/v1/api/players";
-        string authHeader = "Basic YWRtaW46dW5yZWFs";
-        string curlStatusFile = Path.Combine(baseDir, "curl_status.txt");
-        string curlOutputFile = Path.Combine(baseDir, "curl_output.txt");
-
-        if (!MakeApiRequest(apiUrl, authHeader, responseFile, curlStatusFile, curlOutputFile))
+        if (string.IsNullOrEmpty(toleranciaProximaStr) || !int.TryParse(toleranciaProximaStr, out toleranciaProxima))
         {
-            Console.WriteLine($"Falha na requisição à API. Detalhes no arquivo: {Path.Combine(logsDir, "logs.txt")}");
-            SendNotification("SERVIDOR DOWN, SOLICITANDO REINICIO");
-            return;
+            toleranciaProxima = 7000;
         }
-        else
+        if (string.IsNullOrEmpty(toleranciaPerigoStr) || !int.TryParse(toleranciaPerigoStr, out toleranciaPerigo))
         {
-            Console.WriteLine("Requisição a API concluída com sucesso.");
+            toleranciaPerigo = 3500;
         }
 
-        if (ProcessJsonAndUpdateCsv(playersCsvFile, responseFile) == false)
+        while (true)
         {
+            baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            string logsDir = Path.Combine(baseDir, @"Dados\logs");
+            string playersCsvFile = Path.Combine(baseDir, @"Dados\players_data.csv");
+            string responseFile = Path.Combine(baseDir, @"Dados\response.json");
+
+
+            Console.WriteLine($"################### {DateTime.Now} ###################");
+            Console.WriteLine($"Tolerância definida em {toleranciaProxima} perigo em {toleranciaPerigo}");
+
+            CleanTempFiles();
+
+            string curlStatusFile = Path.Combine(baseDir, "Dados", "curl_status.txt");
+            string curlOutputFile = Path.Combine(baseDir, "Dados", "curl_output.txt");
+
+            if (!await MakeApiRequest(apiUrl, authUsername, authPassword, responseFile, curlStatusFile, curlOutputFile))
+            {
+                if (!File.Exists(Path.Combine(baseDir, "Dados", "statusServer.txt")))
+                {
+                    File.WriteAllText(Path.Combine(baseDir, "Dados", "statusServer.txt"), "");
+                }
+                string content = File.ReadAllText(Path.Combine(baseDir, "Dados", "statusServer.txt"));
+
+                if (content != "Servidor Offline")
+                {
+                    File.WriteAllText(Path.Combine(baseDir, "Dados", "statusServer.txt"), "Servidor Offline");
+                    Console.WriteLine("Servidor Offline");
+                    SendDiscordNotification("Servidor Offline", "16711680"); //Color red
+                    await SendWhatsAppNotification("SERVIDOR DOWN, SOLICITANDO REINICIO");
+                }
+                Console.WriteLine($"Falha na requisição à API. Detalhes no arquivo: {Path.Combine(logsDir, "logs.txt")}");
+                                
+                continue;
+            }
+            else
+            {
+                if (!File.Exists(Path.Combine(baseDir, "Dados", "statusServer.txt")))
+                {
+                    File.WriteAllText(Path.Combine(baseDir, "Dados", "statusServer.txt"), "");
+                }
+
+                string content = File.ReadAllText(Path.Combine(baseDir, "Dados", "statusServer.txt"));
+
+                if (content != "Servidor Online")
+                {
+                    File.WriteAllText(Path.Combine(baseDir, "Dados", "statusServer.txt"), "Servidor Online");
+                    Console.WriteLine("Servidor Online");
+                    SendDiscordNotification("Servidor Online", "5763719"); //Color green
+                    await SendWhatsAppNotification("Servidor ONLINE. RR com SUCESSO");
+                }
+                Console.WriteLine("Requisição a API concluída com sucesso.");
+            }
+
+            if (ProcessJsonAndUpdateCsv(playersCsvFile, responseFile) == false)
+            {
+                Thread.Sleep(10000);
+                Console.WriteLine("Player sem ID");
+                continue;
+            }
+
+            string directoryPath = Path.Combine(baseDir, "Dados", "Guildas");
+            CheckCoordinatesInTextFiles(playersCsvFile, directoryPath);
+
+            Console.WriteLine("Verificação de coordenadas concluída.");
             Thread.Sleep(10000);
-            Console.WriteLine("Payer sem ID");
-            goto inicio;
         }
+    }
 
+    static void InitializeEnvironmentVariables()
+    {
+        apiUrl = Environment.GetEnvironmentVariable("API_URL") ?? "http://192.168.100.73:8212/v1/api/players";
+        toleranciaProximaStr = Environment.GetEnvironmentVariable("TOLERANCIA_PROXIMA");
+        toleranciaPerigoStr = Environment.GetEnvironmentVariable("TOLERANCIA_PERIGO");
+        authUsername = Environment.GetEnvironmentVariable("AUTH_USERNAME") ?? "admin";
+        authPassword = Environment.GetEnvironmentVariable("AUTH_PASSWORD") ?? "unreal";
+        whatsappApiUrl = Environment.GetEnvironmentVariable("WHATSAPP_API_URL") ?? "http://192.168.100.84:3000/client/sendMessage/suke";
+        whatsappApiKey = Environment.GetEnvironmentVariable("WHATSAPP_API_KEY") ?? "SukeApiWhatsApp";
+        ChatIdContact = Environment.GetEnvironmentVariable("CHAT_ID_CONTACT") ?? "120363315524671818@g.us";
+        discordWebhookUrl = Environment.GetEnvironmentVariable("DISCORD_WEBHOOK_URL") ?? "https://discord.com/api/webhooks/1261089127546355783/mKVdDzog3EUjLyvxPvwzDFX_-EqbzO4VWiCSc3RTQefADZl4Iz5kBGkFlEQIMVp6_jV_";
+    }
+    static void InitializeDirectoriesAndFiles()
+    {
+        string basePath = AppDomain.CurrentDomain.BaseDirectory;
+        string dadosPath = Path.Combine(basePath, "Dados");
+        string logsPath = Path.Combine(dadosPath, "logs");
+        string guildasPath = Path.Combine(dadosPath, "Guildas");
+        string playersDataFile = Path.Combine(dadosPath, "players_data.csv");
+        string responseFile = Path.Combine(dadosPath, "response.json");
 
-        string directoryPath = Path.Combine(baseDir, "nome");
-        CheckCoordinatesInTextFiles(playersCsvFile, directoryPath, tolerancia);
+        try
+        {
+            // Cria o diretório Dados se não existir
+            if (!Directory.Exists(dadosPath))
+            {
+                Directory.CreateDirectory(dadosPath);
+                Console.WriteLine($"Diretório criado: {dadosPath}");
+            }
 
-        Console.WriteLine("Verificação de coordenadas concluída.");
-        Thread.Sleep(30000);
-        goto inicio;
+            // Cria o diretório logs se não existir
+            if (!Directory.Exists(logsPath))
+            {
+                Directory.CreateDirectory(logsPath);
+                Console.WriteLine($"Diretório criado: {logsPath}");
+            }
+
+            // Cria o diretório Guildas se não existir
+            if (!Directory.Exists(guildasPath))
+            {
+                Directory.CreateDirectory(guildasPath);
+                Console.WriteLine($"Diretório criado: {guildasPath}");
+            }
+
+            // Cria o arquivo players_data.csv se não existir
+            if (!File.Exists(playersDataFile))
+            {
+                File.WriteAllText(playersDataFile, string.Empty);
+                Console.WriteLine($"Arquivo criado: {playersDataFile}");
+            }
+
+            // Cria o arquivo response.json se não existir
+            if (!File.Exists(responseFile))
+            {
+                File.WriteAllText(responseFile, string.Empty);
+                Console.WriteLine($"Arquivo criado: {responseFile}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Erro ao criar diretórios ou arquivos: {ex.Message}");
+        }
     }
 
     static void CleanTempFiles()
@@ -58,38 +174,42 @@ class Program
         string[] tempFiles = { "curl_status.txt", "curl_output.txt", "response.json", "temp_error.json" };
         foreach (var file in tempFiles)
         {
-            string filePath = Path.Combine(baseDir, file);
+            string filePath = Path.Combine(baseDir, "Dados", file);
             if (File.Exists(filePath))
                 File.Delete(filePath);
         }
     }
 
-    static bool MakeApiRequest(string apiUrl, string authHeader, string responseFile, string curlStatusFile, string curlOutputFile)
+    static async Task<bool> MakeApiRequest(string apiUrl, string username, string password, string responseFile, string curlStatusFile, string curlOutputFile)
     {
         try
         {
-            WebClient client = new WebClient();
-            client.Headers.Add("Authorization", authHeader);
-            client.DownloadFile(apiUrl, responseFile);
-            File.WriteAllText(curlOutputFile, client.ResponseHeaders["http_code"]);
-            return true;
-        }
-        catch (WebException ex)
-        {
-            using (WebResponse response = ex.Response)
+            using (var client = new HttpClient())
             {
-                HttpWebResponse httpResponse = (HttpWebResponse)response;
-                if (httpResponse != null)
+                var authInfo = Convert.ToBase64String(Encoding.Default.GetBytes($"{username}:{password}"));
+                client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", authInfo);
+
+                var response = await client.GetAsync(apiUrl);
+
+                if (response.IsSuccessStatusCode)
                 {
-                    File.WriteAllText(curlStatusFile, ((int)httpResponse.StatusCode).ToString());
-                    using (Stream data = response.GetResponseStream())
-                    using (var reader = new StreamReader(data))
-                    {
-                        string text = reader.ReadToEnd();
-                        File.AppendAllText(Path.Combine(baseDir, "logs", "logs.txt"), $"Falha na requisição à API. Código de status: {httpResponse.StatusCode}\nDetalhes do erro:\n{text}\n");
-                    }
+                    var content = await response.Content.ReadAsStringAsync();
+                    File.WriteAllText(responseFile, content);
+                    return true;
+                }
+                else
+                {
+                    var statusCode = (int)response.StatusCode;
+                    File.WriteAllText(curlStatusFile, statusCode.ToString());
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    File.AppendAllText(Path.Combine(baseDir, "Dados", "logs", "logs.txt"), $"Falha na requisição à API. Código de status: {statusCode}\nDetalhes do erro:\n{errorContent}\n");
+                    return false;
                 }
             }
+        }
+        catch (Exception ex)
+        {
+            File.AppendAllText(Path.Combine(baseDir, "Dados", "logs", "logs.txt"), $"Erro na requisição à API: {ex.Message}\n");
             return false;
         }
     }
@@ -102,21 +222,26 @@ class Program
         List<Player> playersEntered = new List<Player>();
         List<Player> playersExited = new List<Player>();
 
-
-
+        AccountSemIDPoint:
         foreach (var newPlayer in newPlayers)
         {
             if (newPlayer.PlayerId == "None")
             {
-                Console.WriteLine("Acconut sem ID");
-                return false;
+                Console.WriteLine($"Account {newPlayer.AccountName} sem ID");
+                newPlayers.Remove(newPlayer);
+                goto AccountSemIDPoint;
             }
-
-            if (!existingPlayers.Any(p => p.AccountName == newPlayer.AccountName))
+            else
             {
-                playersEntered.Add(newPlayer);
 
+                if (!existingPlayers.Any(p => p.AccountName == newPlayer.AccountName))
+                {
+                    playersEntered.Add(newPlayer);
+                }
             }
+            
+
+
         }
 
         foreach (var existingPlayer in existingPlayers)
@@ -127,22 +252,20 @@ class Program
             }
         }
 
-
-
         UpdateCsvWithPlayers(playersCsvFile, newPlayers);
 
         Console.WriteLine("Jogadores que Entraram:");
         foreach (var player in playersEntered)
         {
             Console.WriteLine($"{player.Name}");
-            SendDiscordNotification($"{player.Name} entrou no servidor", "5763719");
+            SendDiscordNotification($"{player.Name} ({player.AccountName}) entrou no servidor", "1752220");
         }
 
         Console.WriteLine("Jogadores que Saíram:");
         foreach (var player in playersExited)
         {
             Console.WriteLine($"{player.Name}");
-            SendDiscordNotification($"{player.Name} Saiu do servidor", "16411130");
+            SendDiscordNotification($"{player.Name} ({player.AccountName}) saiu do servidor", "10181046");
         }
         return true;
     }
@@ -204,45 +327,46 @@ class Program
         Console.WriteLine("Arquivo CSV atualizado.");
     }
 
-    static void CheckCoordinatesInTextFiles(string playersCsvFile, string directoryPath, int tolerancia)
+    static void CheckCoordinatesInTextFiles(string playersCsvFile, string directoryPath)
     {
         try
         {
-            var players = File.ReadAllLines(playersCsvFile)
-                              .Select(line => line.Split(','))
-                              .Select(cols => new Player
-                              {
-                                  Name = cols[0],
-                                  AccountName = cols[1],
-                                  LocationX = int.Parse(cols[2]),
-                                  LocationY = int.Parse(cols[3])
-                              })
-                              .ToList();
+            var players = ReadPlayersFromCsv(playersCsvFile);
+            var textFiles = Directory.GetFiles(directoryPath, "*.txt");
 
-            foreach (var file in Directory.GetFiles(directoryPath, "*.txt"))
+            foreach (var file in textFiles)
             {
-                var fileLines = File.ReadAllLines(file);
-                foreach (var line in fileLines)
+                var lines = File.ReadAllLines(file);
+                foreach (var line in lines)
                 {
-                    var fileCoords = line.Split(',');
-                    if (fileCoords.Length >= 4)
+                    var data = line.Split(',');
+                    if (data.Length >= 3)
                     {
-                        string fileName = fileCoords[0];
-                        string fileAccountName = fileCoords[1];
-                        int fileLocationX = int.Parse(fileCoords[2]);
-                        int fileLocationY = int.Parse(fileCoords[3]);
+                        string fileName = data[0];
+                        string fileAccountName = data[1];
+                        int fileLocationX = int.Parse(data[2]);
+                        int fileLocationY = int.Parse(data[3]);
 
                         foreach (var player in players)
                         {
-                            int dx = Math.Abs(player.LocationX - fileLocationX);
-                            int dy = Math.Abs(player.LocationY - fileLocationY);
-
-                            if (dx <= tolerancia && dy <= tolerancia &&
-                                (player.Name != fileName || player.AccountName != fileAccountName))
+                            if (player.AccountName != fileAccountName &&
+                                Math.Abs(player.LocationX - fileLocationX) < toleranciaProxima &&
+                                Math.Abs(player.LocationY - fileLocationY) < toleranciaProxima)
                             {
-                                string msg = $"\"{player.Name} está invadindo a base de {fileName}\"";
-                                SendNotification(msg);
-                                Console.WriteLine("Notificação enviada para WhatsApp.");
+                                if (player.AccountName != fileAccountName &&
+                                Math.Abs(player.LocationX - fileLocationX) < toleranciaPerigo &&
+                                Math.Abs(player.LocationY - fileLocationY) < toleranciaPerigo)
+                                {
+                                    string message = $"⚔️ {player.Name} Invadiu a área dos {Path.GetFileNameWithoutExtension(file)}! ⚔️";
+                                    Console.WriteLine(message);
+                                    SendWhatsAppNotification(message);
+                                }
+                                else
+                                {
+                                    string message = $"⚠️ {player.Name} Proximo a área dos {Path.GetFileNameWithoutExtension(file)}! ⚠️";
+                                    Console.WriteLine(message);
+                                    SendWhatsAppNotification(message);
+                                }
                             }
                         }
                     }
@@ -251,74 +375,78 @@ class Program
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Erro ao verificar coordenadas nos arquivos de texto: {ex.Message}");
+            Console.WriteLine($"Erro ao verificar coordenadas: {ex.Message}");
         }
     }
 
-    static void SendNotification(string message)
+    static async Task SendDiscordNotification(string message, string color)
     {
         try
         {
-            string apiUrl = "http://192.168.100.84:3000/client/sendMessage/suke";
-            string apiKey = "SukeApiWhatsApp";
-            string jsonBody = $"{{\"chatId\": \"120363315524671818@g.us\", \"contentType\": \"string\", \"content\": \"{message}\"}}";
+            ServicePointManager.ServerCertificateValidationCallback += (sender, certificate, chain, sslPolicyErrors) => true;
 
-            ProcessStartInfo startInfo = new ProcessStartInfo
-            {
-                FileName = "curl.exe",
-                Arguments = $"--silent --location \"{apiUrl}\" --header \"Content-Type: application/json\" --header \"x-api-key: {apiKey}\" --data \"{jsonBody}\"",
-                UseShellExecute = false,
-                RedirectStandardOutput = true
-            };
+            var httpWebRequest = (HttpWebRequest)WebRequest.Create(discordWebhookUrl);
+            httpWebRequest.ContentType = "application/json";
+            httpWebRequest.Method = "POST";
 
-            using (Process process = Process.Start(startInfo))
+            using (var streamWriter = new StreamWriter(httpWebRequest.GetRequestStream()))
             {
-                process.WaitForExit();
-                Console.WriteLine("Notificação enviada para WhatsApp.");
+                string json = new JObject(
+                    new JProperty("embeds", new JArray(
+                        new JObject(
+                            new JProperty("description", message),
+                            new JProperty("color", color)
+                        )
+                    ))
+                ).ToString();
+
+                streamWriter.Write(json);
             }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Erro ao enviar notificação para WhatsApp: {ex.Message}");
-        }
-    }
 
-    static void SendDiscordNotification(string message, string discordColor)
-    {
-        try
-        {
-            string webhookUrl = "https://discord.com/api/webhooks/1261089127546355783/mKVdDzog3EUjLyvxPvwzDFX_-EqbzO4VWiCSc3RTQefADZl4Iz5kBGkFlEQIMVp6_jV_";
-            string jsonBody = $"{{\\\"username\\\": \\\"Captain Hook\\\", \\\"embeds\\\": [{{\\\"description\\\": \\\"{message}\\\", \\\"color\\\": {discordColor}}}]}}";
-
-            ProcessStartInfo startInfo = new ProcessStartInfo
+            var httpResponse = (HttpWebResponse)httpWebRequest.GetResponse();
+            using (var streamReader = new StreamReader(httpResponse.GetResponseStream()))
             {
-                FileName = "curl", //Linux
-                //FileName = "curl.exe", //para windows
-                Arguments = $"--location \"{webhookUrl}\" --header \"Content-Type: application/json\" --data \"{jsonBody}\"",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            };
-
-            using (Process process = Process.Start(startInfo))
-            {
-                string output = process.StandardOutput.ReadToEnd();
-                string error = process.StandardError.ReadToEnd();
-                process.WaitForExit();
-
-                if (process.ExitCode == 0)
-                {
-                    Console.WriteLine("Notificação enviada para o Discord com sucesso.");
-                }
-                else
-                {
-                    Console.WriteLine($"Erro ao enviar notificação para o Discord: {error}");
-                }
+                var result = streamReader.ReadToEnd();
+                //Console.WriteLine(result);
             }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Erro ao enviar notificação para o Discord: {ex.Message}");
+        }
+    }
+
+    static async Task SendNotification(string message)
+    {
+        await SendWhatsAppNotification(message);
+        SendDiscordNotification(message, "16711680"); // Red color
+    }
+
+    static async Task SendWhatsAppNotification(string message)
+    {
+        try
+        {
+            using (var client = new HttpClient())
+            {
+                var request = new HttpRequestMessage(HttpMethod.Post, whatsappApiUrl);
+                request.Headers.Add("x-api-key", whatsappApiKey);
+
+                var content = new JObject(
+                    new JProperty("chatId", ChatIdContact),
+                    new JProperty("contentType", "string"),
+                    new JProperty("content", message)
+                ).ToString();
+
+                request.Content = new StringContent(content, Encoding.UTF8, "application/json");
+
+                var response = await client.SendAsync(request);
+                response.EnsureSuccessStatusCode();
+                Console.WriteLine(await response.Content.ReadAsStringAsync());
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Erro ao enviar notificação pelo WhatsApp: {ex.Message}");
         }
     }
 }
