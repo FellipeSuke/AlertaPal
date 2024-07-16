@@ -1,9 +1,6 @@
 ﻿using Newtonsoft.Json.Linq;
-using System.Diagnostics;
 using System.Net;
-using System.Net.Http;
 using System.Text;
-using System.Threading.Tasks;
 
 class Program
 {
@@ -19,6 +16,8 @@ class Program
     static string toleranciaProximaStr;
     static int toleranciaPerigo;
     static string toleranciaPerigoStr;
+    static int tempoDeAtualizacao;
+    static string tempoDeAtualizacaoStr;
 
 
 
@@ -34,6 +33,10 @@ class Program
         if (string.IsNullOrEmpty(toleranciaPerigoStr) || !int.TryParse(toleranciaPerigoStr, out toleranciaPerigo))
         {
             toleranciaPerigo = 3500;
+        }
+        if (string.IsNullOrEmpty(tempoDeAtualizacaoStr) || !int.TryParse(tempoDeAtualizacaoStr, out tempoDeAtualizacao))
+        {
+            tempoDeAtualizacao = 10000;
         }
 
         while (true)
@@ -64,11 +67,14 @@ class Program
                 {
                     File.WriteAllText(Path.Combine(baseDir, "Dados", "statusServer.txt"), "Servidor Offline");
                     Console.WriteLine("Servidor Offline");
+
+                    ProcessJsonAndUpdateCsv(playersCsvFile, responseFile);
+
                     SendDiscordNotification("Servidor Offline", "16711680"); //Color red
                     await SendWhatsAppNotification("SERVIDOR DOWN, SOLICITANDO REINICIO");
                 }
                 Console.WriteLine($"Falha na requisição à API. Detalhes no arquivo: {Path.Combine(logsDir, "logs.txt")}");
-                                
+
                 continue;
             }
             else
@@ -101,7 +107,7 @@ class Program
             CheckCoordinatesInTextFiles(playersCsvFile, directoryPath);
 
             Console.WriteLine("Verificação de coordenadas concluída.");
-            Thread.Sleep(10000);
+            Thread.Sleep(tempoDeAtualizacao);
         }
     }
 
@@ -116,6 +122,11 @@ class Program
         whatsappApiKey = Environment.GetEnvironmentVariable("WHATSAPP_API_KEY") ?? "SukeApiWhatsApp";
         ChatIdContact = Environment.GetEnvironmentVariable("CHAT_ID_CONTACT") ?? "120363315524671818@g.us";
         discordWebhookUrl = Environment.GetEnvironmentVariable("DISCORD_WEBHOOK_URL") ?? "https://discord.com/api/webhooks/1261089127546355783/mKVdDzog3EUjLyvxPvwzDFX_-EqbzO4VWiCSc3RTQefADZl4Iz5kBGkFlEQIMVp6_jV_";
+        tempoDeAtualizacaoStr = Environment.GetEnvironmentVariable("TEMPO_DE_ATUALIZACAO");
+#if DEBUG
+        Console.WriteLine("Discord em testes Internos Captain Hook");
+        discordWebhookUrl = Environment.GetEnvironmentVariable("DISCORD_WEBHOOK_URL") ?? "https://discord.com/api/webhooks/1262885751532552234/HBgF6Fkm76bsNXxsLr_SDfAhjgD_2hTEP7PUkF5eT7RX6nhEj57lGq3BllBZtvNvWnGo";
+#endif
     }
     static void InitializeDirectoriesAndFiles()
     {
@@ -221,15 +232,14 @@ class Program
 
         List<Player> playersEntered = new List<Player>();
         List<Player> playersExited = new List<Player>();
+        List<Player> playersLoading = new List<Player>();
 
-        AccountSemIDPoint:
         foreach (var newPlayer in newPlayers)
         {
             if (newPlayer.PlayerId == "None")
             {
-                Console.WriteLine($"Account {newPlayer.AccountName} sem ID");
-                newPlayers.Remove(newPlayer);
-                goto AccountSemIDPoint;
+                Console.WriteLine($"Account {newPlayer.AccountName} na tela de Loading");
+                playersLoading.Add(newPlayer);
             }
             else
             {
@@ -239,7 +249,7 @@ class Program
                     playersEntered.Add(newPlayer);
                 }
             }
-            
+
 
 
         }
@@ -250,6 +260,10 @@ class Program
             {
                 playersExited.Add(existingPlayer);
             }
+        }
+        foreach (var PlayerLoad in playersLoading)
+        {
+            newPlayers.Remove(PlayerLoad);
         }
 
         UpdateCsvWithPlayers(playersCsvFile, newPlayers);
@@ -297,19 +311,34 @@ class Program
     static List<Player> ParsePlayersFromJson(string filePath)
     {
         List<Player> players = new List<Player>();
-        string jsonContent = File.ReadAllText(filePath);
-        JObject json = JObject.Parse(jsonContent);
+        string jsonContent;
+        JObject json = null; // Inicializando com null
 
-        foreach (var player in json["players"])
+        try
         {
-            players.Add(new Player
+            jsonContent = File.ReadAllText(filePath);
+            json = JObject.Parse(jsonContent);
+        }
+        catch
+        {
+            Console.WriteLine("Server OffLine, sem Json");
+            return players; // Retorna uma lista vazia
+        }
+
+        // Verifica se o json foi corretamente inicializado
+        if (json != null && json["players"] != null)
+        {
+            foreach (var player in json["players"])
             {
-                Name = (string)player["name"],
-                AccountName = (string)player["accountName"],
-                PlayerId = (string)player["playerId"],
-                LocationX = (int)Math.Floor((double)player["location_x"]),
-                LocationY = (int)Math.Floor((double)player["location_y"])
-            });
+                players.Add(new Player
+                {
+                    Name = (string)player["name"],
+                    AccountName = (string)player["accountName"],
+                    PlayerId = (string)player["playerId"],
+                    LocationX = (int)Math.Floor((double)player["location_x"]),
+                    LocationY = (int)Math.Floor((double)player["location_y"])
+                });
+            }
         }
         return players;
     }
