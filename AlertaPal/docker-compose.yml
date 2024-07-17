@@ -1,0 +1,28 @@
+services:
+  app:
+    container_name: palworld-discord-hook-container
+    image: sukeee/palworld-discord-hook:latest
+    environment:
+      - API_URL=http://192.168.100.73:8212/v1/api/players
+      - TOLERANCIA_PROXIMA=7000
+      - TOLERANCIA_PERIGO=3500
+      - TEMPO_DE_ATUALIZACAO=10000  #em milesegundos
+      - AUTH_USERNAME=admin
+      - AUTH_PASSWORD=unreal
+      - WHATSAPP_API_URL=http://192.168.100.84:3000/client/sendMessage/suke
+      - WHATSAPP_API_KEY=SukeApiWhatsApp
+      - CHAT_ID_CONTACT=120363315524671818@g.us
+      - DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/1261089127546355783/mKVdDzog3EUjLyvxPvwzDFX_-EqbzO4VWiCSc3RTQefADZl4Iz5kBGkFlEQIMVp6_jV_
+    #ports:
+      #- "8080:80" # Ajuste isso conforme necessário
+    volumes:
+      - ./Dados:/app/Dados
+    #networks:
+      #- alertanet
+    restart: always
+
+#networks:
+  #alertanet:
+    #driver: bridge
+
+    

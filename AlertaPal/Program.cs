@@ -113,7 +113,7 @@ class Program
 
     static void InitializeEnvironmentVariables()
     {
-        apiUrl = Environment.GetEnvironmentVariable("API_URL") ?? "http://192.168.100.73:8212/v1/api/players";
+        apiUrl = Environment.GetEnvironmentVariable("API_URL") ?? "http://192.168.100.74:8212/v1/api/players";
         toleranciaProximaStr = Environment.GetEnvironmentVariable("TOLERANCIA_PROXIMA");
         toleranciaPerigoStr = Environment.GetEnvironmentVariable("TOLERANCIA_PERIGO");
         authUsername = Environment.GetEnvironmentVariable("AUTH_USERNAME") ?? "admin";
