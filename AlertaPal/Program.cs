@@ -12,43 +12,71 @@ class Program
     static string whatsappApiKey;
     static string ChatIdContact;
     static string discordWebhookUrl;
-    static int toleranciaProxima;
-    static string toleranciaProximaStr;
+
+
+    static string toleranciaProximaLStr;
+    static int toleranciaProximaL;
+    static string toleranciaProximaMStr;
+    static int toleranciaProximaM;
+    static string toleranciaProximaPStr;
+    static int toleranciaProximaP;
+    static string toleranciaProximaMPStr;
+    static int toleranciaProximaMP;
+
     static int toleranciaPerigo;
     static string toleranciaPerigoStr;
     static int tempoDeAtualizacao;
     static string tempoDeAtualizacaoStr;
-
+    static Dictionary<string, string> lastProximityStatus = new Dictionary<string, string>();
+    static bool eventoDisponivel = true;
+    static bool producao = true;
 
 
     static async Task Main()
     {
+        Console.WriteLine("Versão 1.0.1");
+
         InitializeDirectoriesAndFiles();
         InitializeEnvironmentVariables();
 
-        if (string.IsNullOrEmpty(toleranciaProximaStr) || !int.TryParse(toleranciaProximaStr, out toleranciaProxima))
+
+        if (string.IsNullOrEmpty(toleranciaProximaLStr) || !int.TryParse(toleranciaProximaLStr, out toleranciaProximaL))
         {
-            toleranciaProxima = 7000;
+            toleranciaProximaL = 150000;
+        }
+        if (string.IsNullOrEmpty(toleranciaProximaMStr) || !int.TryParse(toleranciaProximaMStr, out toleranciaProximaM))
+        {
+            toleranciaProximaM = 85000;
+        }
+        if (string.IsNullOrEmpty(toleranciaProximaPStr) || !int.TryParse(toleranciaProximaPStr, out toleranciaProximaP))
+        {
+            toleranciaProximaP = 40000;
+        }
+        if (string.IsNullOrEmpty(toleranciaProximaMPStr) || !int.TryParse(toleranciaProximaMPStr, out toleranciaProximaMP))
+        {
+            toleranciaProximaMP = 15000;
         }
         if (string.IsNullOrEmpty(toleranciaPerigoStr) || !int.TryParse(toleranciaPerigoStr, out toleranciaPerigo))
         {
-            toleranciaPerigo = 3500;
+            toleranciaPerigo = 200;
         }
         if (string.IsNullOrEmpty(tempoDeAtualizacaoStr) || !int.TryParse(tempoDeAtualizacaoStr, out tempoDeAtualizacao))
         {
-            tempoDeAtualizacao = 10000;
+            tempoDeAtualizacao = 1000;
         }
 
-        while (true)
+        SendDiscordNotification("############### Evento INICIADO ###############");
+
+
+        Console.WriteLine($"################### {DateTime.Now} ###################");
+        Console.WriteLine($"Tolerância definida em {toleranciaProximaL} perigo em {toleranciaPerigo}");
+
+        do
         {
             baseDir = AppDomain.CurrentDomain.BaseDirectory;
             string logsDir = Path.Combine(baseDir, @"Dados\logs");
             string playersCsvFile = Path.Combine(baseDir, @"Dados\players_data.csv");
             string responseFile = Path.Combine(baseDir, @"Dados\response.json");
-
-
-            Console.WriteLine($"################### {DateTime.Now} ###################");
-            Console.WriteLine($"Tolerância definida em {toleranciaProxima} perigo em {toleranciaPerigo}");
 
             CleanTempFiles();
 
@@ -70,8 +98,8 @@ class Program
 
                     ProcessJsonAndUpdateCsv(playersCsvFile, responseFile);
 
-                    SendDiscordNotification("Servidor Offline", "16711680"); //Color red
-                    await SendWhatsAppNotification("SERVIDOR DOWN, SOLICITANDO REINICIO");
+                    //SendDiscordNotification("Servidor Offline", "16711680"); //Color red
+                    // await SendWhatsAppNotification("SERVIDOR DOWN, SOLICITANDO REINICIO");
                 }
                 Console.WriteLine($"Falha na requisição à API. Detalhes no arquivo: {Path.Combine(logsDir, "logs.txt")}");
 
@@ -90,10 +118,11 @@ class Program
                 {
                     File.WriteAllText(Path.Combine(baseDir, "Dados", "statusServer.txt"), "Servidor Online");
                     Console.WriteLine("Servidor Online");
-                    SendDiscordNotification("Servidor Online", "5763719"); //Color green
-                    await SendWhatsAppNotification("Servidor ONLINE. RR com SUCESSO");
+                    // SendDiscordNotification("Servidor Online", "5763719"); //Color green
+                    // await SendWhatsAppNotification("Servidor ONLINE. RR com SUCESSO");
+                    Console.WriteLine("Requisição a API concluída com sucesso.");
                 }
-                Console.WriteLine("Requisição a API concluída com sucesso.");
+
             }
 
             if (ProcessJsonAndUpdateCsv(playersCsvFile, responseFile) == false)
@@ -103,18 +132,27 @@ class Program
                 continue;
             }
 
+
             string directoryPath = Path.Combine(baseDir, "Dados", "Guildas");
             CheckCoordinatesInTextFiles(playersCsvFile, directoryPath);
 
-            Console.WriteLine("Verificação de coordenadas concluída.");
+            //Console.WriteLine("Verificação de coordenadas concluída.");
             Thread.Sleep(tempoDeAtualizacao);
         }
+        while (eventoDisponivel);
+
     }
 
     static void InitializeEnvironmentVariables()
     {
-        apiUrl = Environment.GetEnvironmentVariable("API_URL") ?? "http://192.168.100.74:8212/v1/api/players";
-        toleranciaProximaStr = Environment.GetEnvironmentVariable("TOLERANCIA_PROXIMA");
+        apiUrl = Environment.GetEnvironmentVariable("API_URL") ?? "http://192.168.100.73:8212/v1/api/players";
+        toleranciaProximaLStr = Environment.GetEnvironmentVariable("TOLERANCIA_PROXIMA_Longe");
+        toleranciaProximaMStr = Environment.GetEnvironmentVariable("TOLERANCIA_PROXIMA_Media");
+        toleranciaProximaPStr = Environment.GetEnvironmentVariable("TOLERANCIA_PROXIMA_Perto");
+        toleranciaProximaMPStr = Environment.GetEnvironmentVariable("TOLERANCIA_PROXIMA_Muito_Perto");
+
+
+
         toleranciaPerigoStr = Environment.GetEnvironmentVariable("TOLERANCIA_PERIGO");
         authUsername = Environment.GetEnvironmentVariable("AUTH_USERNAME") ?? "admin";
         authPassword = Environment.GetEnvironmentVariable("AUTH_PASSWORD") ?? "unreal";
@@ -125,7 +163,7 @@ class Program
         tempoDeAtualizacaoStr = Environment.GetEnvironmentVariable("TEMPO_DE_ATUALIZACAO");
 #if DEBUG
         Console.WriteLine("Discord em testes Internos Captain Hook");
-        discordWebhookUrl = Environment.GetEnvironmentVariable("DISCORD_WEBHOOK_URL") ?? "https://discord.com/api/webhooks/1262885751532552234/HBgF6Fkm76bsNXxsLr_SDfAhjgD_2hTEP7PUkF5eT7RX6nhEj57lGq3BllBZtvNvWnGo";
+        discordWebhookUrl = Environment.GetEnvironmentVariable("DISCORD_WEBHOOK_URL") ?? "https://discord.com/api/webhooks/1264207929788334081/yPVAYyj11K1KMyG2tCzOT8Irl_ujOrKO_O_2OswcDHPmhqgBO6kZN7abQdUsCTNhFGFy";
 #endif
     }
     static void InitializeDirectoriesAndFiles()
@@ -268,18 +306,25 @@ class Program
 
         UpdateCsvWithPlayers(playersCsvFile, newPlayers);
 
-        Console.WriteLine("Jogadores que Entraram:");
+        if (playersEntered.Count >= 1)
+        {
+            Console.WriteLine("Jogadores que Entraram:");
+        }
+
         foreach (var player in playersEntered)
         {
             Console.WriteLine($"{player.Name}");
-            SendDiscordNotification($"{player.Name} ({player.AccountName}) entrou no servidor", "1752220");
+            //SendDiscordNotification($"{player.Name} ({player.AccountName}) entrou no servidor", "1752220");
+        }
+        if (playersExited.Count >= 1)
+        {
+            Console.WriteLine("Jogadores que Saíram:");
         }
 
-        Console.WriteLine("Jogadores que Saíram:");
         foreach (var player in playersExited)
         {
             Console.WriteLine($"{player.Name}");
-            SendDiscordNotification($"{player.Name} ({player.AccountName}) saiu do servidor", "10181046");
+            //SendDiscordNotification($"{player.Name} ({player.AccountName}) saiu do servidor", "10181046");
         }
         return true;
     }
@@ -353,7 +398,7 @@ class Program
                 writer.WriteLine(line);
             }
         }
-        Console.WriteLine("Arquivo CSV atualizado.");
+        //Console.WriteLine("Arquivo CSV atualizado.");
     }
 
     static void CheckCoordinatesInTextFiles(string playersCsvFile, string directoryPath)
@@ -366,38 +411,43 @@ class Program
             foreach (var file in textFiles)
             {
                 var lines = File.ReadAllLines(file);
-                foreach (var line in lines)
-                {
-                    var data = line.Split(',');
-                    if (data.Length >= 3)
-                    {
-                        string fileName = data[0];
-                        string fileAccountName = data[1];
-                        int fileLocationX = int.Parse(data[2]);
-                        int fileLocationY = int.Parse(data[3]);
+                if (lines.Length < 1) continue;
 
-                        foreach (var player in players)
-                        {
-                            if (player.AccountName != fileAccountName &&
-                                Math.Abs(player.LocationX - fileLocationX) < toleranciaProxima &&
-                                Math.Abs(player.LocationY - fileLocationY) < toleranciaProxima)
-                            {
-                                if (player.AccountName != fileAccountName &&
-                                Math.Abs(player.LocationX - fileLocationX) < toleranciaPerigo &&
-                                Math.Abs(player.LocationY - fileLocationY) < toleranciaPerigo)
-                                {
-                                    string message = $"⚔️ {player.Name} Invadiu a área dos {Path.GetFileNameWithoutExtension(file)}! ⚔️";
-                                    Console.WriteLine(message);
-                                    SendWhatsAppNotification(message);
-                                }
-                                else
-                                {
-                                    string message = $"⚠️ {player.Name} Proximo a área dos {Path.GetFileNameWithoutExtension(file)}! ⚠️";
-                                    Console.WriteLine(message);
-                                    SendWhatsAppNotification(message);
-                                }
-                            }
-                        }
+                var treasureData = lines[0].Split(',');
+                if (treasureData.Length < 4) continue;
+
+                string fileName = treasureData[0];
+                string fileAccountName = treasureData[1];
+                int fileLocationX = int.Parse(treasureData[2]);
+                int fileLocationY = int.Parse(treasureData[3]);
+
+                var ignoredPlayers = new HashSet<string>();
+                for (int i = 1; i < lines.Length; i++)
+                {
+                    ignoredPlayers.Add(lines[i].Trim());
+                }
+
+                //Console.WriteLine($"Checking file: {Path.GetFileNameWithoutExtension(file)}");
+                //Console.WriteLine($"Ignored players: {string.Join(", ", ignoredPlayers)}");
+
+                foreach (var player in players)
+                {
+                    if (ignoredPlayers.Contains(player.Name))
+                    {
+                        //Console.WriteLine($"Player {player.Name} foi ignorado");
+                        continue;
+                    }
+
+                    int distanceX = Math.Abs(player.LocationX - fileLocationX);
+                    int distanceY = Math.Abs(player.LocationY - fileLocationY);
+
+                    string currentStatus = GetProximityStatus(distanceX, distanceY);
+                    string playerKey = $"{player.AccountName}_{fileName}";
+
+                    if (!lastProximityStatus.ContainsKey(playerKey) || lastProximityStatus[playerKey] != currentStatus)
+                    {
+                        SendProximityAlert(player, file, currentStatus);
+                        lastProximityStatus[playerKey] = currentStatus;
                     }
                 }
             }
@@ -408,7 +458,44 @@ class Program
         }
     }
 
-    static async Task SendDiscordNotification(string message, string color)
+
+
+    static string GetProximityStatus(int distanceX, int distanceY)
+    {
+        if (distanceX < toleranciaPerigo && distanceY < toleranciaPerigo)
+        {
+            eventoDisponivel = false;
+            return "🎉 Parabéns encontrou o BAÚ! 🎉";
+        }
+        if (distanceX < toleranciaProximaMP && distanceY < toleranciaProximaMP)
+            return "🔥🔥 Está muito perto do BAÚ! 🔥🔥";
+        if (distanceX < toleranciaProximaP && distanceY < toleranciaProximaP)
+            return "🔥 Está ficando quente! 🔥";
+        if (distanceX < toleranciaProximaM && distanceY < toleranciaProximaM)
+            return "🌡️ Está morno! 🌡️";
+        if (distanceX < toleranciaProximaL && distanceY < toleranciaProximaL)
+            return "❄️ Está frio, mas não tão frio! ❄️";
+
+        return "👋 Viiiiishhh, Está muito longe do BAÚ! 👋 ";
+    }
+
+    static void SendProximityAlert(Player player, string file, string message)
+    {
+        if (message != null)
+        {
+            string formattedMessage = $"{player.Name} {message} do {Path.GetFileNameWithoutExtension(file)}!";
+            Console.WriteLine(formattedMessage);
+
+            SendDiscordNotification(formattedMessage);
+            if (!eventoDisponivel)
+            {
+                SendDiscordNotification("############### Fim do evento ###############");
+            }
+
+        }
+    }
+
+    static async Task SendDiscordNotification(string message, string color = "5763719")
     {
         try
         {
@@ -432,12 +519,16 @@ class Program
                 streamWriter.Write(json);
             }
 
-            var httpResponse = (HttpWebResponse)httpWebRequest.GetResponse();
-            using (var streamReader = new StreamReader(httpResponse.GetResponseStream()))
+            if (producao)
             {
-                var result = streamReader.ReadToEnd();
-                //Console.WriteLine(result);
+                var httpResponse = (HttpWebResponse)httpWebRequest.GetResponse();
+                using (var streamReader = new StreamReader(httpResponse.GetResponseStream()))
+                {
+                    var result = streamReader.ReadToEnd();
+                    Console.WriteLine(result);
+                }
             }
+            
         }
         catch (Exception ex)
         {
