@@ -29,7 +29,7 @@ class Program
     static string tempoDeAtualizacaoStr;
     static Dictionary<string, string> lastProximityStatus = new Dictionary<string, string>();
     static bool eventoDisponivel = true;
-    static bool producao = true;
+    static bool producao = false;
 
 
     static async Task Main()
@@ -163,7 +163,7 @@ class Program
         tempoDeAtualizacaoStr = Environment.GetEnvironmentVariable("TEMPO_DE_ATUALIZACAO");
 #if DEBUG
         Console.WriteLine("Discord em testes Internos Captain Hook");
-        discordWebhookUrl = Environment.GetEnvironmentVariable("DISCORD_WEBHOOK_URL") ?? "https://discord.com/api/webhooks/1264207929788334081/yPVAYyj11K1KMyG2tCzOT8Irl_ujOrKO_O_2OswcDHPmhqgBO6kZN7abQdUsCTNhFGFy";
+        discordWebhookUrl = Environment.GetEnvironmentVariable("DISCORD_WEBHOOK_URL") ?? "https://discordapp.com/api/webhooks/1264207929788334081/yPVAYyj11K1KMyG2tCzOT8Irl_ujOrKO_O_2OswcDHPmhqgBO6kZN7abQdUsCTNhFGFy";
 #endif
     }
     static void InitializeDirectoriesAndFiles()
